@@ -27,6 +27,9 @@ module TestDataArray
     similar(dm, 2, 2)
     similar(dt, 2, 2, 2)
 
+    @test isequal(DataArray([NA, NA], [true, true]), DataArray([NA, NA], [false, false]))
+    @test isequal(DataArray(Any[1, NA], [false, true]), DataArray(Any[1, NA], [false, false]))
+    @test isequal(DataArray(Any[1, 2], [false, true]), DataArray(Any[1, NA], [false, false]))
 
     x = DataArray([9, 9, 8])
     y = DataArray([1, 9, 3, 2, 2])
@@ -69,19 +72,17 @@ module TestDataArray
     set3 = map(pdata, set1)
 
     for (dest, src, bigsrc, emptysrc, res1, res2) in Any[set1, set2, set3]
-        # Base.copy! was inconsistent until recently in 0.4-dev
-        da_or_04 = VERSION > v"0.4-" || !isa(dest, PooledDataArray)
 
         @test isequal(copy!(copy(dest), src), res1)
         @test isequal(copy!(copy(dest), 1, src), res1)
 
-        da_or_04 && @test isequal(copy!(copy(dest), 2, src, 2), res2)
+        @test isequal(copy!(copy(dest), 2, src, 2), res2)
         @test isequal(copy!(copy(dest), 2, src, 2, 1), res2)
 
         @test isequal(copy!(copy(dest), 99, src, 99, 0), dest)
 
         @test isequal(copy!(copy(dest), 1, emptysrc), dest)
-        da_or_04 && @test_throws BoundsError copy!(dest, 1, emptysrc, 1)
+        @test_throws BoundsError copy!(dest, 1, emptysrc, 1)
 
         for idx in [0, 4]
             @test_throws BoundsError copy!(dest, idx, src)
@@ -91,7 +92,11 @@ module TestDataArray
             @test_throws BoundsError copy!(dest, 1, src, idx, 1)
         end
 
-       da_or_04 && @test_throws BoundsError copy!(dest, 1, src, 1, -1)
+        if VERSION >= v"0.5.0-dev+4711"
+            @test_throws ArgumentError copy!(dest, 1, src, 1, -1)
+        else
+            @test_throws BoundsError copy!(dest, 1, src, 1, -1)
+        end
 
         @test_throws BoundsError copy!(dest, bigsrc)
 
