@@ -22,11 +22,21 @@ type DataArray{T, N} <: AbstractDataArray{T, N}
     data::Array{T, N}
     na::BitArray{N}
 
-    # Ensure data values and missingness metadata match
     function DataArray(d::Array{T, N}, m::BitArray{N})
+        # Ensure data values and missingness metadata match
         if size(d) != size(m)
             msg = "Data and missingness arrays must be the same size"
             throw(ArgumentError(msg))
+        end
+        # additionally check that d does not contain NA entries
+        if eltype(d) === Any
+            for i in eachindex(d)
+                if isassigned(d, i) && isna(d, i)
+                    m[i] = true
+                end
+            end
+        elseif eltype(d) <: NAtype
+            m = trues(m)
         end
         new(d, m)
     end
@@ -81,7 +91,7 @@ end
 #'
 #' da = DataArray([1, 2, 3], [false, false, true])
 function DataArray(d::Array, m::Array{Bool}) # -> DataArray{T}
-    return DataArray(d, bitpack(m))
+    return DataArray(d, BitArray(m))
 end
 
 #' @description
@@ -166,7 +176,11 @@ function Base.copy!(dest::DataArray, doffs::Integer, src::DataArray, soffs::Inte
     if n == 0
         return dest
     elseif n < 0
-        throw(BoundsError())
+        if VERSION >= v"0.5.0-dev+4711"
+            throw(ArgumentError("tried to copy n=$n elements, but n should be nonnegative"))
+        else
+            throw(BoundsError())
+        end
     end
     if isbits(eltype(src))
         copy!(dest.data, doffs, src.data, soffs, n)
@@ -447,9 +461,9 @@ isna(da::DataArray) = copy(da.na) # -> BitArray
 #' a = @data([1, 2, 3])
 #' isna(a, 1)
 #' isna(a, 1:2)
-isna(da::DataArray, I::Any) = getindex(da.na, I)
+isna(da::DataArray, I::Real) = getindex(da.na, I)
 
-@nsplat N function isna(da::DataArray, I::NTuple{N,Any}...)
+@nsplat N function isna(da::DataArray, I::NTuple{N,Real}...)
     getindex(da.na, I...)
 end
 
@@ -596,24 +610,22 @@ data(a::AbstractArray) = convert(DataArray, a)
 
 #' @description
 #'
-#' Convert a DataArray to an Array of int, float or bool type.
+#' Convert a DataArray to an Array of float type.
 #'
 #' @param da::DataArray{T} The DataArray that will be converted.
 #'
-#' @returns a::Array{Union(Int, Float64, Bool)} An Array containing the
+#' @returns a::Array{Float64} An Array containing the
 #'          type-converted values of `da`.
 #'
 #' @examples
 #'
 #' dv = @data [1, 2, NA, 4]
-#' v = int(dv)
 #' v = float(dv)
-#' v = bool(dv)
 #
 # TODO: Make sure these handle copying correctly
 # TODO: Remove these? They have odd behavior, because they convert to Array's.
 # TODO: Rethink multi-item documentation approach
-for f in (:(Base.int), :(Base.float), :(Base.bool))
+for f in (:(Base.float),)
     @eval begin
         function ($f)(da::DataArray) # -> DataArray
             if anyna(da)
@@ -624,28 +636,6 @@ for f in (:(Base.int), :(Base.float), :(Base.bool))
             end
         end
     end
-end
-
-#' @description
-#'
-#' Compute the hash of an AbstractDataArray.
-#'
-#' @param da::DataArray{T} DataArray whose hash is desired.
-#'
-#' @returns h::UInt An unsigned integer hash value for `da`.
-#'
-#' @examples
-#'
-#' dv = @data [1, 2, NA, 4]
-#' k = hash(dv)
-#
-# TODO: Make sure this agrees with is_equals()
-function Base.hash(a::AbstractDataArray) # -> UInt
-    h = hash(size(a)) + 1
-    for i in 1:length(a)
-        h = hash(@compat(Int(hash(a[i]))), h)
-    end
-    return @compat UInt(h)
 end
 
 #' @internal

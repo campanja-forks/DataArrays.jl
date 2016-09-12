@@ -37,16 +37,16 @@ module TestExtras
     @assert isequal(cats, pdv)
 
     ##########
-    ## rep
+    ## repeat
     ##########
 
-    @assert rep(3, 2) == [3,3]
-    @assert rep([3,4], 2) == [3,4,3,4]
-    @assert rep([3,4], 1, 2) == [3,3,4,4]
-    @assert rep([3,4], each = 2) == [3,3,4,4]
-    @assert rep([3,4], times = 2) == [3,4,3,4]
-    @assert rep([3,4], [2,3]) == [3,3,4,4,4]
-    @assert isequal(rep((@data [NA,3,4]), 2), (@data [NA,3,4,NA,3,4]))
-    @assert isequal(rep((@data [NA,3,4]), [2,1,2]), (@data [NA,NA,3,4,4]))
-    @assert isequal(rep((@data [NA,3,4]), [2,1,0]), (@data [NA,NA,3]))
+    @test isequal(repeat(@data [3.0, 2.0, NA]; inner = 2, outer = 1),
+                  @data [3.0, 3.0, 2.0, 2.0, NA, NA])
+    @test isequal(repeat(@pdata ["a", "b", NA]; inner = 2, outer = 1),
+                  @pdata ["a", "a", "b", "b", NA, NA])
+    @test isequal(repeat(@data [1 2; 3 NA]; inner = [1, 2], outer = [2, 1]),
+                  @data [1 1 2 2; 3 3 NA NA; 1 1 2 2; 3 3 NA NA])
+    @test isequal(repeat(@pdata [:a :b NA]; inner = [2,1], outer = [1,3]),
+                  @pdata [:a :b NA :a :b NA :a :b NA;
+                          :a :b NA :a :b NA :a :b NA])
 end

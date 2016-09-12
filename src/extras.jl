@@ -49,7 +49,7 @@ function cut{S, T}(x::AbstractVector{S}, breaks::Vector{T})
     n = length(breaks)
     from = map(x -> sprint(showcompact, x), breaks[1:(n - 1)])
     to = map(x -> sprint(showcompact, x), breaks[2:n])
-    pool = Array(ASCIIString, n - 1)
+    pool = Array(String, n - 1)
     if breaks[1] == min_x
         pool[1] = string("[", from[1], ",", to[1], "]")
     else
@@ -61,41 +61,18 @@ function cut{S, T}(x::AbstractVector{S}, breaks::Vector{T})
     PooledDataArray(RefArray(refs), pool)
 end
 
-cut(x::AbstractVector, ngroups::Integer) = cut(x, quantile(x, [1 : ngroups - 1] / ngroups))
+cut(x::AbstractVector, ngroups::Integer) = cut(x, quantile(x, collect(1 : ngroups - 1) / ngroups))
 
-function rep{T <: Integer}(x::AbstractVector, lengths::AbstractVector{T})
-    if length(x) != length(lengths)
-        throw(DimensionMismatch("vector lengths must match"))
-    end
-    res = similar(x, sum(lengths))
-    i = 1
-    for idx in 1:length(x)
-        tmp = x[idx]
-        for kdx in 1:lengths[idx]
-            res[i] = tmp
-            i += 1
-        end
-    end
-    return res
+function Base.repeat{T,N}(A::DataArray{T,N};
+                          inner = ntuple(x->1, ndims(A)),
+                          outer = ntuple(x->1, ndims(A)))
+    DataArray{T,N}(Compat.repeat(A.data; inner=inner, outer=outer),
+                   BitArray(Compat.repeat(A.na; inner=inner, outer=outer)))
 end
 
-function rep(x::AbstractVector, times::Integer = 1, each::Integer = 1)
-    res = similar(x, each * times * length(x))
-    i = 1
-    for jdx in 1:times
-        for idx in 1:length(x)
-            tmp = x[idx]
-            for kdx in 1:each
-                res[i] = tmp
-                i += 1
-            end
-        end
-    end
-    return res
+function Base.repeat{T,R,N}(A::PooledDataArray{T,R,N};
+                            inner = ntuple(x->1, ndims(A)),
+                            outer = ntuple(x->1, ndims(A)))
+    PooledDataArray(RefArray{R,N}(Compat.repeat(A.refs; inner=inner, outer=outer)),
+                    A.pool)
 end
-
-function rep(x::AbstractVector; times::Integer = 1, each::Integer = 1)
-    rep(x, times, each)
-end
-
-rep(x::Any, times::Integer) = fill(x, times)

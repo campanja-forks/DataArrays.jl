@@ -8,7 +8,7 @@ as_pda(x) = convert(PooledDataArray, x)
 as_pda_bigfloat(x) = convert(PooledDataArray{BigFloat}, x)
 
 bittest(f::Function, ewf::Function, a...) = (@test ewf(a...) ==
-        invoke(broadcast, tuple(Function, ntuple(x->AbstractArray, length(a))...), f, a...))
+        invoke(broadcast, Tuple{Function,ntuple(x->AbstractArray, length(a))...}, f, a...))
 n1 = 21
 n2 = 32
 n3 = 17
@@ -20,6 +20,7 @@ rb = 1:5
 @test broadcast!(+, DataArray(Int, 2, 2), [1, 0], [1  4]) == [2 5; 1 4]
 @test broadcast!(+, DataArray(Int, 2), [1, 0], [1, 4]) == [2, 4]
 @test broadcast!(+, DataArray(Int, 2), [1, 0], 2) == [3, 2]
+@test broadcast!(abs, @data([-1, -2])) == @data([1, 2])
 for arr in (identity, as_dataarray, as_pda, as_dataarray_bigfloat, as_pda_bigfloat)
     @test broadcast(+, arr(eye(2)), arr([1, 4])) == [2 1; 4 5]
     @test broadcast(+, arr(eye(2)), arr([1  4])) == [2 4; 1 5]
@@ -57,9 +58,9 @@ for arr in (identity, as_dataarray, as_pda, as_dataarray_bigfloat, as_pda_bigflo
     @test arr([1 2]) ./ arr([8, 4]) == [1/8 2/8; 1/4 2/4]
     @test arr([1 2]) .\ arr([3, 4]) == [3 1.5; 4 2]
     @test arr([3 4]) .^ arr([1, 2]) == [3 4; 9 16]
-    @test arr(bitpack([true false])) .* arr(bitpack([true, true])) == [true false; true false]
-    @test arr(bitpack([true false])) .^ arr(bitpack([false, true])) == [true true; true false]
-    @test arr(bitpack([true false])) .^ arr([0, 3]) == [true true; true false]
+    @test arr(BitArray([true false])) .* arr(BitArray([true, true])) == [true false; true false]
+    @test arr(BitArray([true false])) .^ arr(BitArray([false, true])) == [true true; true false]
+    @test arr(BitArray([true false])) .^ arr([0, 3]) == [true true; true false]
 
     # NOT YET IMPLEMENTED
     # M = arr([11 12; 21 22])
@@ -127,6 +128,7 @@ rt = Base.return_types(broadcast!, (Function, DataArray{Float64, 3}, Array{Float
 # Test map!
 @test_throws DimensionMismatch map!(+, DataArray(Float64, 2, 2), @data([1, 2]), @data([1 2]))
 @test map!(+, DataArray(Float64, 2), @data([1, 2]), @data([1, 2])) == @data([2, 4])
+@test map!(abs, @data([-1, -2])) == @data([1, 2])
 @test isequal(map!(+, DataArray(Float64, 3), @data([1, NA, 3]), @data([NA, 2, 3])), @data([NA, NA, 6]))
 @test map!(isequal, DataArray(Float64, 3), @data([1, NA, NA]), @data([1, NA, 3])) == @data([true, true, false])
 end

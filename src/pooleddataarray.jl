@@ -113,8 +113,8 @@ PooledDataArray{R<:Integer}(t::Type, r::Type{R}) = PooledDataArray(similar(Array
 # Convert a BitArray to an Array{Bool} (m = missingness)
 # For some reason an additional method is needed but even that doesn't work
 # For a BitArray a refs type of UInt8 will always be sufficient as the size of the pool is 0, 1 or 2
-PooledDataArray{N}(d::BitArray{N}) = PooledDataArray(bitunpack(d), falses(size(d)), UInt8)
-PooledDataArray{N}(d::BitArray{N}, m::AbstractArray{Bool, N}) = PooledDataArray(bitunpack(d), m, UInt8)
+PooledDataArray{N}(d::BitArray{N}) = PooledDataArray(Array(d), falses(size(d)), UInt8)
+PooledDataArray{N}(d::BitArray{N}, m::AbstractArray{Bool, N}) = PooledDataArray(Array(d), m, UInt8)
 
 # Convert a DataArray to a PooledDataArray
 PooledDataArray{T,R<:Integer}(da::DataArray{T},
@@ -132,7 +132,7 @@ PooledDataArray{T,R<:Integer}(d::Array{T},
 
 # Explicitly convert Ranges into a PooledDataVector
 PooledDataArray{R<:Integer}(rs::Range,
-                            r::Type{R} = DEFAULT_POOLED_REF_TYPE) = PooledDataArray([rs], falses(length(rs)), r)
+                            r::Type{R} = DEFAULT_POOLED_REF_TYPE) = PooledDataArray(collect(rs), falses(length(rs)), r)
 
 # Initialized constructors with 0's, 1's
 for (f, basef) in ((:pdatazeros, :zeros), (:pdataones, :ones))
@@ -399,6 +399,9 @@ function setlevels!{T,R}(x::PooledDataArray{T,R}, newpool::AbstractVector{T})
     end
 end
 
+setlevels!{T, R}(x::PooledDataArray{T, R},
+                 newpool::AbstractVector) = setlevels!(x, convert(Array{T}, newpool))
+
 function setlevels(x::PooledDataArray, d::Dict)
     newpool = copy(DataArray(x.pool))
     # An NA in `v` is put in the pool; that will cause it to become NA
@@ -484,10 +487,11 @@ function getpoolidx{T,R}(pda::PooledDataArray{T,R}, val::Any)
         push!(pda.pool, val)
         pool_idx = length(pda.pool)
         if pool_idx > typemax(R)
-            throw(ErrorException(
-                "You're using a PooledDataArray with ref type $R, which can only hold $(int(typemax(R))) values,\n",
-                "and you just tried to add the $(typemax(R)+1)th reference.  Please change the ref type\n",
-                "to a larger int type, or use the default ref type ($DEFAULT_POOLED_REF_TYPE)."
+            throw(ArgumentError(
+                "You're using a PooledDataArray with ref type $R,\n" *
+                "which can only hold $(Int(typemax(R))) values, and you just tried to add the $(Int(typemax(R))+1)th\n" *
+                "reference. Please change the ref type to a larger int type, or use the\n" *
+                "default ref type ($DEFAULT_POOLED_REF_TYPE)."
             ))
         end
     end
@@ -510,7 +514,7 @@ end
 # # Need setindex!()'s to make this work
 # This is broken now because the inner show returns to the outer show.
 # function show(io::IO, pda::PooledDataArray)
-#     invoke(show, (Any, AbstractArray), io, pda)
+#     invoke(show, Tuple{Any,AbstractArray}, io, pda)
 #     print(io, "\nlevels: ")
 #     print(io, levels(pda))
 # end
@@ -598,7 +602,6 @@ type FastPerm{O<:Base.Sort.Ordering,V<:AbstractVector} <: Base.Sort.Ordering
     ord::O
     vec::V
 end
-FastPerm{O<:Base.Sort.Ordering,V<:AbstractVector}(o::O,v::V) = FastPerm{O,V}(o,v)
 Base.sortperm{V}(x::AbstractVector, a::Base.Sort.Algorithm, o::FastPerm{Base.Sort.ForwardOrdering,V}) = x[sortperm(o.vec)]
 Base.sortperm{V}(x::AbstractVector, a::Base.Sort.Algorithm, o::FastPerm{Base.Sort.ReverseOrdering,V}) = x[reverse(sortperm(o.vec))]
 Perm{O<:Base.Sort.Ordering}(o::O, v::PooledDataVector) = FastPerm(o, v)
@@ -614,7 +617,7 @@ Perm{O<:Base.Sort.Ordering}(o::O, v::PooledDataVector) = FastPerm(o, v)
 
 function PooledDataVecs{S,Q<:Integer,R<:Integer,N}(v1::PooledDataArray{S,Q,N},
                                                    v2::PooledDataArray{S,R,N})
-    pool = sort(unique([v1.pool, v2.pool]))
+    pool = sort(unique([v1.pool; v2.pool]))
     sz = length(pool)
 
     REFTYPE = sz <= typemax(UInt8)  ? UInt8 :
@@ -640,11 +643,6 @@ function PooledDataVecs{S,Q<:Integer,R<:Integer,N}(v1::PooledDataArray{S,Q,N},
             PooledDataArray(RefArray(refs2), pool))
 end
 
-function PooledDataVecs{S,R<:Integer,N}(v1::PooledDataArray{S,R,N},
-                                        v2::AbstractArray{S,N})
-    return PooledDataVecs(v1,
-                          PooledDataArray(v2))
-end
 function PooledDataVecs{S,R<:Integer,N}(v1::PooledDataArray{S,R,N},
                                         v2::AbstractArray{S,N})
     return PooledDataVecs(v1,
