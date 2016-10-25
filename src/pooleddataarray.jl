@@ -251,13 +251,15 @@ end
 ##
 ##############################################################################
 
-function compact{T,R<:Integer,N}(d::PooledDataArray{T,R,N})
-    sz = length(d.pool)
-
+function compactreftype(sz)
     REFTYPE = sz <= typemax(UInt8)  ? UInt8 :
               sz <= typemax(UInt16) ? UInt16 :
               sz <= typemax(UInt32) ? UInt32 :
                                       UInt64
+end
+
+function compact{T,R<:Integer,N}(d::PooledDataArray{T,R,N})
+    REFTYPE = compactreftype(length(d.pool))
 
     if REFTYPE == R
         return d
@@ -356,7 +358,7 @@ levels{T}(pda::PooledDataArray{T}) = copy(pda.pool)
 function PooledDataArray{S,R,N}(x::PooledDataArray{S,R,N},
                                 newpool::Vector{S})
     # QUESTION: should we have a ! version of this? If so, needs renaming?
-    tidx::Array{R} = findat(newpool, x.pool)
+    tidx::Array{R} = indexin(x.pool, newpool)
     refs = zeros(R, length(x))
     for i in 1:length(refs)
         if x.refs[i] != 0
@@ -366,13 +368,13 @@ function PooledDataArray{S,R,N}(x::PooledDataArray{S,R,N},
     PooledDataArray(RefArray(refs), newpool)
 end
 
-myunique(x::AbstractVector) = x[sort(unique(findat(x, x)))]  # gets the ordering right
-myunique(x::AbstractDataVector) = myunique(dropna(x))   # gets the ordering right; removes NAs
+myunique(x::AbstractVector) = unique(x)
+myunique(x::AbstractDataVector) = unique(dropna(x))
 
 function setlevels{T,R}(x::PooledDataArray{T,R}, newpool::AbstractVector)
     pool = myunique(newpool)
     refs = zeros(R, length(x))
-    tidx::Array{R} = findat(pool, newpool)
+    tidx::Array{R} = indexin(newpool, pool)
     tidx[isna(newpool)] = 0
     for i in 1:length(refs)
         if x.refs[i] != 0
@@ -388,7 +390,7 @@ function setlevels!{T,R}(x::PooledDataArray{T,R}, newpool::AbstractVector{T})
         return x
     else
         x.pool = myunique(newpool)
-        tidx::Array{R} = findat(x.pool, newpool)
+        tidx::Array{R} = indexin(newpool, x.pool)
         tidx[isna(newpool)] = 0
         for i in 1:length(x.refs)
             if x.refs[i] != 0
@@ -618,15 +620,10 @@ Perm{O<:Base.Sort.Ordering}(o::O, v::PooledDataVector) = FastPerm(o, v)
 function PooledDataVecs{S,Q<:Integer,R<:Integer,N}(v1::PooledDataArray{S,Q,N},
                                                    v2::PooledDataArray{S,R,N})
     pool = sort(unique([v1.pool; v2.pool]))
-    sz = length(pool)
+    REFTYPE = compactreftype(length(pool))
 
-    REFTYPE = sz <= typemax(UInt8)  ? UInt8 :
-              sz <= typemax(UInt16) ? UInt16 :
-              sz <= typemax(UInt32) ? UInt32 :
-                                      UInt64
-
-    tidx1 = convert(Vector{REFTYPE}, findat(pool, v1.pool))
-    tidx2 = convert(Vector{REFTYPE}, findat(pool, v2.pool))
+    tidx1 = convert(Vector{REFTYPE}, indexin(v1.pool, pool))
+    tidx2 = convert(Vector{REFTYPE}, indexin(v2.pool, pool))
     refs1 = zeros(REFTYPE, length(v1))
     refs2 = zeros(REFTYPE, length(v2))
     for i in 1:length(refs1)
@@ -828,4 +825,14 @@ function dropna{T}(pdv::PooledDataVector{T})
     end
     resize!(res, total)
     return res
+end
+
+function Base.vcat{T,R,N}(p1::PooledDataArray{T,R,N}, p2::PooledDataArray...)
+    pa = (p1, p2...)
+    pool = unique(T[[p.pool for p in pa]...;])
+
+    idx = [indexin(p.pool, pool)[p.refs] for p in pa]
+
+    refs = Array{DEFAULT_POOLED_REF_TYPE,N}([idx...;])
+    PooledDataArray(RefArray(refs), pool)
 end
